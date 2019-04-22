@@ -9,9 +9,9 @@
 //! Utility for configuring the CPUID (CPU identification) for the guest microVM.
 
 extern crate kvm_bindings;
-extern crate kvm_ioctls;
+extern crate hypervisor;
 
-use kvm_ioctls::CpuId;
+use hypervisor::x86_64::CpuId;
 
 mod common;
 use common::*;

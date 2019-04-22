@@ -10,13 +10,15 @@ use std::os::unix::io::AsRawFd;
 use std::result;
 use std::sync::{Arc, Barrier};
 
-use super::{KvmContext, TimestampUs};
+use super::{HypContext, TimestampUs};
 use arch;
 #[cfg(target_arch = "x86_64")]
 use cpuid::{c3, filter_cpuid, t2};
 use default_syscalls;
-use kvm_bindings::{kvm_pit_config, kvm_userspace_memory_region, KVM_PIT_SPEAKER_DUMMY};
-use kvm_ioctls::*;
+use hypervisor::*;
+use hypervisor::vcpu::*;
+use hypervisor::vm::*;
+use hypervisor::x86_64::*;
 use logger::{LogOption, Metric, LOGGER, METRICS};
 use memory_model::{GuestAddress, GuestMemory, GuestMemoryError};
 use sys_util::EventFd;
@@ -24,7 +26,8 @@ use sys_util::EventFd;
 use vmm_config::machine_config::CpuFeaturesTemplate;
 use vmm_config::machine_config::VmConfig;
 
-const KVM_MEM_LOG_DIRTY_PAGES: u32 = 0x1;
+// TODO: using KVM value now. How about other hypervisor?
+const MEM_LOG_DIRTY_PAGES: u32 = 0x1;
 
 const MAGIC_IOPORT_SIGNAL_GUEST_BOOT_COMPLETE: u16 = 0x03f0;
 const MAGIC_VALUE_SIGNAL_GUEST_BOOT_COMPLETE: u8 = 123;
@@ -42,9 +45,9 @@ pub enum Error {
     /// vCPU count is not initialized.
     VcpuCountNotInitialized,
     /// Cannot open the VM file descriptor.
-    VmFd(io::Error),
+    Vm(io::Error),
     /// Cannot open the VCPU file descriptor.
-    VcpuFd(io::Error),
+    Vcpu(io::Error),
     /// Cannot configure the microvm.
     VmSetup(io::Error),
     /// Cannot run the VCPUs.
@@ -92,8 +95,8 @@ pub enum Error {
 pub type Result<T> = result::Result<T, Error>;
 
 /// A wrapper around creating and using a VM.
-pub struct Vm {
-    fd: VmFd,
+pub struct GuestVm {
+    fd: Box<Vm>,
     guest_mem: Option<GuestMemory>,
 
     // X86 specific fields.
@@ -106,16 +109,16 @@ pub struct Vm {
     irqchip_handle: Option<DeviceFd>,
 }
 
-impl Vm {
-    /// Constructs a new `Vm` using the given `Kvm` instance.
-    pub fn new(kvm: &Kvm) -> Result<Self> {
-        //create fd for interacting with kvm-vm specific functions
-        let vm_fd = kvm.create_vm().map_err(Error::VmFd)?;
+impl GuestVm {
+    /// Constructs a new `Vm` using the given `Hypervisor` instance.
+    pub fn new(hyp: &Box<Hypervisor>) -> Result<Self> {
+        //create fd for interacting with vm specific functions
+        let vm_fd = hyp.create_vm().map_err(Error::Vm)?;
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        let cpuid = kvm
-            .get_supported_cpuid(MAX_KVM_CPUID_ENTRIES)
-            .map_err(Error::VmFd)?;
-        Ok(Vm {
+        let cpuid = hyp
+            .get_supported_cpuid(MAX_CPUID_ENTRIES)
+            .map_err(Error::Vm)?;
+        Ok(GuestVm {
             fd: vm_fd,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             supported_cpuid: cpuid,
@@ -132,8 +135,8 @@ impl Vm {
     }
 
     /// Initializes the guest memory.
-    pub fn memory_init(&mut self, guest_mem: GuestMemory, kvm_context: &KvmContext) -> Result<()> {
-        if guest_mem.num_regions() > kvm_context.max_memslots() {
+    pub fn memory_init(&mut self, guest_mem: GuestMemory, hyp_context: &HypContext) -> Result<()> {
+        if guest_mem.num_regions() > hyp_context.max_memslots() {
             return Err(Error::NotEnoughMemorySlots);
         }
         guest_mem
@@ -141,26 +144,27 @@ impl Vm {
                 info!("Guest memory starts at {:x?}", host_addr);
 
                 let flags = if LOGGER.flags() & LogOption::LogDirtyPages as usize > 0 {
-                    KVM_MEM_LOG_DIRTY_PAGES
+                    MEM_LOG_DIRTY_PAGES
                 } else {
                     0
                 };
 
-                let memory_region = kvm_userspace_memory_region {
-                    slot: index as u32,
-                    guest_phys_addr: guest_addr.offset() as u64,
-                    memory_size: size as u64,
-                    userspace_addr: host_addr as u64,
-                    flags,
-                };
-                self.fd.set_user_memory_region(memory_region)
+                let slot = index as u32;
+                let guest_phys_addr = guest_addr.offset() as u64;
+                let memory_size = size as u64;
+                let userspace_addr = host_addr as u64;
+                self.fd.set_user_memory_region(slot,
+                                               guest_phys_addr,
+                                               memory_size,
+                                               userspace_addr,
+                                               flags)
             })
             .map_err(Error::SetUserMemoryRegion)?;
         self.guest_mem = Some(guest_mem);
 
         #[cfg(target_arch = "x86_64")]
         self.fd
-            .set_tss_address(GuestAddress(arch::x86_64::layout::KVM_TSS_ADDRESS).offset())
+            .set_tss_address(GuestAddress(arch::x86_64::layout::TSS_ADDRESS).offset())
             .map_err(Error::VmSetup)?;
 
         Ok(())
@@ -200,10 +204,10 @@ impl Vm {
     #[cfg(target_arch = "x86_64")]
     /// Creates an in-kernel device model for the PIT.
     pub fn create_pit(&self) -> Result<()> {
-        let mut pit_config = kvm_pit_config::default();
+        let mut pit_config = PitConfig::default();
         // We need to enable the emulation of a dummy speaker port stub so that writing to port 0x61
         // (i.e. KVM_SPEAKER_BASE_ADDRESS) does not trigger an exit to user space.
-        pit_config.flags = KVM_PIT_SPEAKER_DUMMY;
+        pit_config.flags = PIT_SPEAKER_DUMMY;
         self.fd.create_pit2(pit_config).map_err(Error::VmSetup)?;
         Ok(())
     }
@@ -216,25 +220,25 @@ impl Vm {
         self.guest_mem.as_ref()
     }
 
-    /// Gets a reference to the kvm file descriptor owned by this VM.
+    /// Gets a reference to the file descriptor owned by this VM.
     ///
-    pub fn get_fd(&self) -> &VmFd {
+    pub fn get_fd(&self) -> &Box<Vm> {
         &self.fd
     }
 }
 
-/// A wrapper around creating and using a kvm-based VCPU.
-pub struct Vcpu {
+/// A wrapper around creating and using a VCPU.
+pub struct GuestVcpu {
     #[cfg(target_arch = "x86_64")]
     cpuid: CpuId,
-    fd: VcpuFd,
+    fd: Box<Vcpu + Send>,
     id: u8,
     io_bus: devices::Bus,
     mmio_bus: devices::Bus,
     create_ts: TimestampUs,
 }
 
-impl Vcpu {
+impl GuestVcpu {
     /// Constructs a new VCPU for `vm`.
     ///
     /// # Arguments
@@ -243,18 +247,18 @@ impl Vcpu {
     /// * `vm` - The virtual machine this vcpu will get attached to.
     pub fn new(
         id: u8,
-        vm: &Vm,
+        vm: &GuestVm,
         io_bus: devices::Bus,
         mmio_bus: devices::Bus,
         create_ts: TimestampUs,
     ) -> Result<Self> {
-        let kvm_vcpu = vm.fd.create_vcpu(id).map_err(Error::VcpuFd)?;
+        let vcpu = vm.fd.create_vcpu(id).map_err(Error::Vcpu)?;
 
         // Initially the cpuid per vCPU is the one supported by this VM.
-        Ok(Vcpu {
+        Ok(GuestVcpu {
             #[cfg(target_arch = "x86_64")]
             cpuid: vm.get_supported_cpuid(),
-            fd: kvm_vcpu,
+            fd: vcpu,
             id,
             io_bus,
             mmio_bus,
@@ -274,7 +278,7 @@ impl Vcpu {
         &mut self,
         machine_config: &VmConfig,
         kernel_start_addr: GuestAddress,
-        vm: &Vm,
+        vm: &GuestVm,
     ) -> Result<()> {
         // the MachineConfiguration has defaults for ht_enabled and vcpu_count hence it is safe to unwrap
         filter_cpuid(
@@ -323,26 +327,26 @@ impl Vcpu {
         &mut self,
         _machine_config: &VmConfig,
         kernel_load_addr: GuestAddress,
-        vm: &Vm,
+        vm: &GuestVm,
     ) -> Result<()> {
         let vm_memory = vm
             .get_memory()
             .ok_or(Error::GuestMemory(GuestMemoryError::MemoryNotInitialized))?;
 
-        let mut kvi: kvm_bindings::kvm_vcpu_init = kvm_bindings::kvm_vcpu_init::default();
+        let mut vi: hypervisor::vm::VcpuInit = hypervisor::vm::VcpuInit::default();
 
         // This reads back the kernel's preferred target type.
         vm.fd
-            .get_preferred_target(&mut kvi)
+            .get_preferred_target(&mut vi)
             .map_err(Error::VcpuArmPreferredTarget)?;
         // We already checked that the capability is supported.
-        kvi.features[0] |= 1 << kvm_bindings::KVM_ARM_VCPU_PSCI_0_2;
+        vi.features[0] |= 1 << hypervisor::vm::ARM_VCPU_PSCI_0_2;
         // Non-boot cpus are powered off initially.
         if self.id > 0 {
-            kvi.features[0] |= 1 << kvm_bindings::KVM_ARM_VCPU_POWER_OFF;
+            vi.features[0] |= 1 << hypervisor::vm::ARM_VCPU_POWER_OFF;
         }
 
-        self.fd.vcpu_init(&kvi).map_err(Error::VcpuArmInit)?;
+        self.fd.vcpu_init(&vi).map_err(Error::VcpuArmInit)?;
         arch::aarch64::regs::setup_regs(&self.fd, self.id, kernel_load_addr.offset(), vm_memory)
             .map_err(Error::REGSConfiguration)?;
         Ok(())
@@ -384,7 +388,7 @@ impl Vcpu {
                     info!("Received KVM_EXIT_SHUTDOWN signal");
                     Err(Error::VcpuUnhandledKvmExit)
                 }
-                // Documentation specifies that below kvm exits are considered
+                // Documentation specifies that below hypervisor exits are considered
                 // errors.
                 VcpuExit::FailEntry => {
                     METRICS.vcpu.failures.inc();

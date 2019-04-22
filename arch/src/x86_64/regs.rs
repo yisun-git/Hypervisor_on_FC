@@ -7,10 +7,10 @@
 
 use std::{io, mem, result};
 
-use kvm_bindings::{kvm_fpu, kvm_msr_entry, kvm_msrs, kvm_regs, kvm_sregs};
-use kvm_ioctls::VcpuFd;
+use hypervisor::vcpu::Vcpu;
+use hypervisor::x86_64::{FpuState, MsrEntry, MsrEntries, StandardRegisters, SpecialRegisters};
 
-use super::gdt::{gdt_entry, kvm_segment_from_gdt};
+use super::gdt::{gdt_entry, segment_register_from_gdt};
 use arch_gen::x86::msr_index;
 use memory_model::{GuestAddress, GuestMemory};
 
@@ -50,8 +50,8 @@ pub type Result<T> = result::Result<T, Error>;
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
-pub fn setup_fpu(vcpu: &VcpuFd) -> Result<()> {
-    let fpu: kvm_fpu = kvm_fpu {
+pub fn setup_fpu(vcpu: &Box<Vcpu + Send>) -> Result<()> {
+    let fpu: FpuState = FpuState {
         fcw: 0x37f,
         mxcsr: 0x1f80,
         ..Default::default()
@@ -65,22 +65,22 @@ pub fn setup_fpu(vcpu: &VcpuFd) -> Result<()> {
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
-pub fn setup_msrs(vcpu: &VcpuFd) -> Result<()> {
+pub fn setup_msrs(vcpu: &Box<Vcpu + Send>) -> Result<()> {
     let entry_vec = create_msr_entries();
     let vec_size_bytes =
-        mem::size_of::<kvm_msrs>() + (entry_vec.len() * mem::size_of::<kvm_msr_entry>());
+        mem::size_of::<MsrEntries>() + (entry_vec.len() * mem::size_of::<MsrEntry>());
     let vec: Vec<u8> = Vec::with_capacity(vec_size_bytes);
     #[allow(clippy::cast_ptr_alignment)]
-    let msrs: &mut kvm_msrs = unsafe {
+    let msrs: &mut MsrEntries = unsafe {
         // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
         // vector to size and set the members ensures no out-of-bounds errors below.
-        &mut *(vec.as_ptr() as *mut kvm_msrs)
+        &mut *(vec.as_ptr() as *mut MsrEntries)
     };
 
     unsafe {
         // Mapping the unsized array to a slice is unsafe because the length isn't known.
         // Providing the length used to create the struct guarantees the entire slice is valid.
-        let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(entry_vec.len());
+        let entries: &mut [MsrEntry] = msrs.entries.as_mut_slice(entry_vec.len());
         entries.copy_from_slice(&entry_vec);
     }
     msrs.nmsrs = entry_vec.len() as u32;
@@ -95,8 +95,8 @@ pub fn setup_msrs(vcpu: &VcpuFd) -> Result<()> {
 ///
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
 /// * `boot_ip` - Starting instruction pointer.
-pub fn setup_regs(vcpu: &VcpuFd, boot_ip: u64) -> Result<()> {
-    let regs: kvm_regs = kvm_regs {
+pub fn setup_regs(vcpu: &Box<Vcpu + Send>, boot_ip: u64) -> Result<()> {
+    let regs: StandardRegisters = StandardRegisters {
         rflags: 0x0000_0000_0000_0002u64,
         rip: boot_ip,
         // Frame pointer. It gets a snapshot of the stack pointer (rsp) so that when adjustments are
@@ -119,8 +119,8 @@ pub fn setup_regs(vcpu: &VcpuFd, boot_ip: u64) -> Result<()> {
 ///
 /// * `mem` - The memory that will be passed to the guest.
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
-pub fn setup_sregs(mem: &GuestMemory, vcpu: &VcpuFd) -> Result<()> {
-    let mut sregs: kvm_sregs = vcpu.get_sregs().map_err(Error::GetStatusRegisters)?;
+pub fn setup_sregs(mem: &GuestMemory, vcpu: &Box<Vcpu + Send>) -> Result<()> {
+    let mut sregs: SpecialRegisters = vcpu.get_sregs().map_err(Error::GetStatusRegisters)?;
 
     configure_segments_and_sregs(mem, &mut sregs)?;
     setup_page_tables(mem, &mut sregs)?; // TODO(dgreid) - Can this be done once per system instead?
@@ -160,7 +160,7 @@ fn write_idt_value(val: u64, guest_mem: &GuestMemory) -> Result<()> {
         .map_err(|_| Error::WriteIDT)
 }
 
-fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
+fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut SpecialRegisters) -> Result<()> {
     let gdt_table: [u64; BOOT_GDT_MAX as usize] = [
         gdt_entry(0, 0, 0),            // NULL
         gdt_entry(0xa09b, 0, 0xfffff), // CODE
@@ -168,9 +168,9 @@ fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Res
         gdt_entry(0x808b, 0, 0xfffff), // TSS
     ];
 
-    let code_seg = kvm_segment_from_gdt(gdt_table[1], 1);
-    let data_seg = kvm_segment_from_gdt(gdt_table[2], 2);
-    let tss_seg = kvm_segment_from_gdt(gdt_table[3], 3);
+    let code_seg = segment_register_from_gdt(gdt_table[1], 1);
+    let data_seg = segment_register_from_gdt(gdt_table[2], 2);
+    let tss_seg = segment_register_from_gdt(gdt_table[3], 3);
 
     // Write segments
     write_gdt_table(&gdt_table[..], mem)?;
@@ -196,7 +196,7 @@ fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Res
     Ok(())
 }
 
-fn setup_page_tables(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
+fn setup_page_tables(mem: &GuestMemory, sregs: &mut SpecialRegisters) -> Result<()> {
     // Puts PML4 right after zero page but aligned to 4k.
     let boot_pml4_addr = GuestAddress(PML4_START);
     let boot_pdpte_addr = GuestAddress(PDPTE_START);
@@ -225,57 +225,57 @@ fn setup_page_tables(mem: &GuestMemory, sregs: &mut kvm_sregs) -> Result<()> {
     Ok(())
 }
 
-fn create_msr_entries() -> Vec<kvm_msr_entry> {
-    let mut entries = Vec::<kvm_msr_entry>::new();
+fn create_msr_entries() -> Vec<MsrEntry> {
+    let mut entries = Vec::<MsrEntry>::new();
 
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_IA32_SYSENTER_CS,
         data: 0x0,
         ..Default::default()
     });
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_IA32_SYSENTER_ESP,
         data: 0x0,
         ..Default::default()
     });
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_IA32_SYSENTER_EIP,
         data: 0x0,
         ..Default::default()
     });
     // x86_64 specific msrs, we only run on x86_64 not x86.
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_STAR,
         data: 0x0,
         ..Default::default()
     });
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_CSTAR,
         data: 0x0,
         ..Default::default()
     });
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_KERNEL_GS_BASE,
         data: 0x0,
         ..Default::default()
     });
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_SYSCALL_MASK,
         data: 0x0,
         ..Default::default()
     });
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_LSTAR,
         data: 0x0,
         ..Default::default()
     });
     // end of x86_64 specific code
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_IA32_TSC,
         data: 0x0,
         ..Default::default()
     });
-    entries.push(kvm_msr_entry {
+    entries.push(MsrEntry {
         index: msr_index::MSR_IA32_MISC_ENABLE,
         data: u64::from(msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING),
         ..Default::default()
@@ -299,7 +299,7 @@ mod tests {
         gm.read_obj_from_addr(read_addr).unwrap()
     }
 
-    fn validate_segments_and_sregs(gm: &GuestMemory, sregs: &kvm_sregs) {
+    fn validate_segments_and_sregs(gm: &GuestMemory, sregs: &SpecialRegisters) {
         assert_eq!(0x0, read_u64(&gm, BOOT_GDT_OFFSET));
         assert_eq!(0xaf_9b00_0000_ffff, read_u64(&gm, BOOT_GDT_OFFSET + 8));
         assert_eq!(0xcf_9300_0000_ffff, read_u64(&gm, BOOT_GDT_OFFSET + 16));
@@ -321,14 +321,14 @@ mod tests {
 
     #[test]
     fn test_configure_segments_and_sregs() {
-        let mut sregs: kvm_sregs = Default::default();
+        let mut sregs: SpecialRegisters = Default::default();
         let gm = create_guest_mem();
         configure_segments_and_sregs(&gm, &mut sregs).unwrap();
 
         validate_segments_and_sregs(&gm, &sregs);
     }
 
-    fn validate_page_tables(gm: &GuestMemory, sregs: &kvm_sregs) {
+    fn validate_page_tables(gm: &GuestMemory, sregs: &SpecialRegisters) {
         assert_eq!(0xa003, read_u64(&gm, PML4_START));
         assert_eq!(0xb003, read_u64(&gm, PDPTE_START));
         for i in 0..512 {
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_setup_page_tables() {
-        let mut sregs: kvm_sregs = Default::default();
+        let mut sregs: SpecialRegisters = Default::default();
         let gm = create_guest_mem();
         setup_page_tables(&gm, &mut sregs).unwrap();
 
@@ -359,15 +359,15 @@ mod tests {
         let vcpu = vm.create_vcpu(0).unwrap();
         setup_fpu(&vcpu).unwrap();
 
-        let expected_fpu: kvm_fpu = kvm_fpu {
+        let expected_fpu: FpuState = FpuState {
             fcw: 0x37f,
             mxcsr: 0x1f80,
             ..Default::default()
         };
-        let actual_fpu: kvm_fpu = vcpu.get_fpu().unwrap();
+        let actual_fpu: FpuState = vcpu.get_fpu().unwrap();
         // TODO: auto-generate kvm related structures with PartialEq on.
         assert_eq!(expected_fpu.fcw, actual_fpu.fcw);
-        // Setting the mxcsr register from kvm_fpu inside setup_fpu does not influence anything.
+        // Setting the mxcsr register from FpuState inside setup_fpu does not influence anything.
         // See 'kvm_arch_vcpu_ioctl_set_fpu' from arch/x86/kvm/x86.c.
         // The mxcsr will stay 0 and the assert below fails. Decide whether or not we should
         // remove it at all.
@@ -384,20 +384,20 @@ mod tests {
 
         // This test will check against the last MSR entry configured (the tenth one).
         // See create_msr_entries for details.
-        let test_kvm_msrs_entry = [kvm_msr_entry {
+        let test_kvm_msrs_entry = [MsrEntry {
             index: msr_index::MSR_IA32_MISC_ENABLE,
             ..Default::default()
         }];
-        let vec_size_bytes = mem::size_of::<kvm_msrs>() + mem::size_of::<kvm_msr_entry>();
+        let vec_size_bytes = mem::size_of::<MsrEntries>() + mem::size_of::<MsrEntry>();
         let vec: Vec<u8> = Vec::with_capacity(vec_size_bytes);
-        let mut msrs: &mut kvm_msrs = unsafe {
+        let mut msrs: &mut MsrEntries = unsafe {
             // Converting the vector's memory to a struct is unsafe.  Carefully using the read-only
             // vector to size and set the members ensures no out-of-bounds errors below.
-            &mut *(vec.as_ptr() as *mut kvm_msrs)
+            &mut *(vec.as_ptr() as *mut MsrEntries)
         };
 
         unsafe {
-            let entries: &mut [kvm_msr_entry] = msrs.entries.as_mut_slice(1);
+            let entries: &mut [MsrEntry] = msrs.entries.as_mut_slice(1);
             entries.copy_from_slice(&test_kvm_msrs_entry);
         }
 
@@ -422,7 +422,7 @@ mod tests {
         let vm = kvm.create_vm().unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
 
-        let expected_regs: kvm_regs = kvm_regs {
+        let expected_regs: StandardRegisters = StandardRegisters {
             rflags: 0x0000_0000_0000_0002u64,
             rip: 1,
             rsp: super::super::layout::BOOT_STACK_POINTER as u64,
@@ -433,7 +433,7 @@ mod tests {
 
         setup_regs(&vcpu, expected_regs.rip).unwrap();
 
-        let actual_regs: kvm_regs = vcpu.get_regs().unwrap();
+        let actual_regs: StandardRegisters = vcpu.get_regs().unwrap();
         assert_eq!(actual_regs, expected_regs);
     }
 
@@ -447,7 +447,7 @@ mod tests {
         assert!(vcpu.set_sregs(&Default::default()).is_ok());
         setup_sregs(&gm, &vcpu).unwrap();
 
-        let mut sregs: kvm_sregs = vcpu.get_sregs().unwrap();
+        let mut sregs: SpecialRegisters = vcpu.get_sregs().unwrap();
         // for AMD KVM_GET_SREGS returns g = 0 for each kvm_segment.
         // We set it to 1, otherwise the test will fail.
         sregs.gs.g = 1;

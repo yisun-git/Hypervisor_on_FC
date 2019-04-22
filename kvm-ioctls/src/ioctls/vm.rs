@@ -19,32 +19,10 @@ use ioctls::vcpu::VcpuFd;
 use ioctls::KvmRunWrapper;
 use kvm_ioctls::*;
 use sys_ioctl::*;
+use hypervisor::vm::{ Vm };
+use hypervisor::vcpu::{ Vcpu };
+use hypervisor::x86_64::{ PitConfig, IoEventAddress };
 
-/// An address either in programmable I/O space or in memory mapped I/O space.
-///
-/// The `IoEventAddress` is used for specifying the type when registering an event
-/// in [register_ioevent](struct.VmFd.html#method.register_ioevent).
-///
-pub enum IoEventAddress {
-    /// Representation of an programmable I/O address.
-    Pio(u64),
-    /// Representation of an memory mapped I/O address.
-    Mmio(u64),
-}
-
-/// Helper structure for disabling datamatch.
-///
-/// The structure can be used as a parameter to
-/// [`register_ioevent`](struct.VmFd.html#method.register_ioevent)
-/// to disable filtering of events based on the datamatch flag. For details check the
-/// [KVM API documentation](https://www.kernel.org/doc/Documentation/virtual/kvm/api.txt).
-///
-pub struct NoDatamatch;
-impl Into<u64> for NoDatamatch {
-    fn into(self) -> u64 {
-        0
-    }
-}
 
 /// Wrapper over KVM VM ioctls.
 pub struct VmFd {
@@ -52,7 +30,7 @@ pub struct VmFd {
     run_size: usize,
 }
 
-impl VmFd {
+impl Vm for VmFd {
     /// Creates/modifies a guest physical memory slot.
     ///
     /// See the documentation for `KVM_SET_USER_MEMORY_REGION`.
@@ -84,10 +62,21 @@ impl VmFd {
     /// vm.set_user_memory_region(mem_region).unwrap();
     /// ```
     ///
-    pub fn set_user_memory_region(
+    fn set_user_memory_region(
         &self,
-        user_memory_region: kvm_userspace_memory_region,
+        slot: u32,
+        guest_phys_addr: u64,
+        memory_size: u64,
+        userspace_addr: u64,
+        flags: u32,
     ) -> Result<()> {
+        let user_memory_region = kvm_userspace_memory_region {
+            slot,
+            flags,
+            guest_phys_addr,
+            memory_size,
+            userspace_addr,
+        };
         let ret =
             unsafe { ioctl_with_ref(self, KVM_SET_USER_MEMORY_REGION(), &user_memory_region) };
         if ret == 0 {
@@ -116,7 +105,7 @@ impl VmFd {
     /// ```
     ///
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn set_tss_address(&self, offset: usize) -> Result<()> {
+    fn set_tss_address(&self, offset: usize) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret = unsafe { ioctl_with_val(self, KVM_SET_TSS_ADDR(), offset as c_ulong) };
         if ret == 0 {
@@ -148,7 +137,7 @@ impl VmFd {
         target_arch = "arm",
         target_arch = "aarch64"
     ))]
-    pub fn create_irq_chip(&self) -> Result<()> {
+    fn create_irq_chip(&self) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
         let ret = unsafe { ioctl(self, KVM_CREATE_IRQCHIP()) };
         if ret == 0 {
@@ -179,7 +168,7 @@ impl VmFd {
     /// ```
     ///
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn create_pit2(&self, pit_config: kvm_pit_config) -> Result<()> {
+    fn create_pit2(&self, pit_config: PitConfig) -> Result<()> {
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_CREATE_PIT2(), &pit_config) };
@@ -222,14 +211,14 @@ impl VmFd {
     ///    .unwrap();
     /// ```
     ///
-    pub fn register_ioevent<T: Into<u64>>(
+    fn register_ioevent(
         &self,
         fd: RawFd,
         addr: &IoEventAddress,
-        datamatch: T,
+        datamatch: u64,
     ) -> Result<()> {
         let mut flags = 0;
-        if std::mem::size_of::<T>() > 0 {
+        if datamatch > 0 {
             flags |= 1 << kvm_ioeventfd_flag_nr_datamatch
         }
         if let IoEventAddress::Pio(_) = *addr {
@@ -237,8 +226,8 @@ impl VmFd {
         }
 
         let ioeventfd = kvm_ioeventfd {
-            datamatch: datamatch.into(),
-            len: std::mem::size_of::<T>() as u32,
+            datamatch: datamatch,
+            len: 4,
             addr: match addr {
                 IoEventAddress::Pio(ref p) => *p as u64,
                 IoEventAddress::Mmio(ref m) => *m,
@@ -350,7 +339,7 @@ impl VmFd {
     /// ```
     ///
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_dirty_log(&self, slot: u32, memory_size: usize) -> Result<Vec<u64>> {
+    fn get_dirty_log(&self, slot: u32, memory_size: usize) -> Result<Vec<u64>> {
         // Compute the length of the bitmap needed for all dirty pages in one memory slot.
         // One memory page is 4KiB (4096 bits) and `KVM_GET_DIRTY_LOG` returns one dirty bit for
         // each page.
@@ -407,7 +396,7 @@ impl VmFd {
         target_arch = "arm",
         target_arch = "aarch64"
     ))]
-    pub fn register_irqfd(&self, fd: RawFd, gsi: u32) -> Result<()> {
+    fn register_irqfd(&self, fd: RawFd, gsi: u32) -> Result<()> {
         let irqfd = kvm_irqfd {
             fd: fd as u32,
             gsi,
@@ -448,7 +437,7 @@ impl VmFd {
     /// let vcpu = vm.create_vcpu(0);
     /// ```
     ///
-    pub fn create_vcpu(&self, id: u8) -> Result<VcpuFd> {
+    fn create_vcpu(&self, id: u8) -> Result<Box<Vcpu + Send>> {
         // Safe because we know that vm is a VM fd and we verify the return result.
         #[allow(clippy::cast_lossless)]
         let vcpu_fd = unsafe { ioctl_with_val(&self.vm, KVM_CREATE_VCPU(), id as c_ulong) };
@@ -503,7 +492,7 @@ impl VmFd {
     ///     .create_device(&mut device).unwrap();
     /// ```
     ///
-    pub fn create_device(&self, device: &mut kvm_create_device) -> Result<DeviceFd> {
+    fn create_device(&self, device: &mut kvm_create_device) -> Result<DeviceFd> {
         let ret = unsafe { ioctl_with_ref(self, KVM_CREATE_DEVICE(), device) };
         if ret == 0 {
             Ok((new_device(unsafe { File::from_raw_fd(device.fd as i32) })))
@@ -536,7 +525,7 @@ impl VmFd {
     /// ```
     ///
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    pub fn get_preferred_target(&self, kvi: &mut kvm_vcpu_init) -> Result<()> {
+    fn get_preferred_target(&self, kvi: &mut kvm_vcpu_init) -> Result<()> {
         // The ioctl is safe because we allocated the struct and we know the
         // kernel will write exactly the size of the struct.
         let ret = unsafe { ioctl_with_mut_ref(self, KVM_ARM_PREFERRED_TARGET(), kvi) };
@@ -545,7 +534,9 @@ impl VmFd {
         }
         Ok(())
     }
+}
 
+impl VmFd {
     /// Get the `kvm_run` size.
     pub fn run_size(&self) -> usize {
         self.run_size
@@ -557,8 +548,8 @@ impl VmFd {
 /// This should not be exported as a public function because the preferred way is to use
 /// `create_vm` from `Kvm`. The function cannot be part of the `VmFd` implementation because
 /// then it would be exported with the public `VmFd` interface.
-pub fn new_vmfd(vm: File, run_size: usize) -> VmFd {
-    VmFd { vm, run_size }
+pub fn new_vmfd(vm: File, run_size: usize) -> Box<Vm> {
+    Box::new(VmFd { vm, run_size })
 }
 
 impl AsRawFd for VmFd {

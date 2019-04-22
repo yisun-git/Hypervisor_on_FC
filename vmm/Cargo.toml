@@ -27,6 +27,7 @@ rate_limiter = { path = "../rate_limiter" }
 seccomp = { path = "../seccomp" }
 sys_util = { path = "../sys_util" }
 kvm-ioctls = { path = "../kvm-ioctls" }
+hypervisor = { path = "../hypervisor" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 cpuid = { path = "../cpuid" }

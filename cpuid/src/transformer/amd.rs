@@ -4,7 +4,7 @@
 use super::*;
 
 use kvm_bindings::KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
-use kvm_ioctls::CpuId;
+use hypervisor::x86_64::CpuId;
 
 use bit_helper::BitHelper;
 use cpu_leaf::*;

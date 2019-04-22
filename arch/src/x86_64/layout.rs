@@ -23,7 +23,7 @@ pub const IRQ_BASE: u32 = 5;
 pub const IRQ_MAX: u32 = 15;
 
 /// Address for the TSS setup.
-pub const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
+pub const TSS_ADDRESS: usize = 0xfffb_d000;
 
 /// The 'zero page', a.k.a linux kernel bootparams.
 pub const ZERO_PAGE_START: usize = 0x7000;

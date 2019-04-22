@@ -12,7 +12,8 @@ use std::{fmt, io};
 
 use devices;
 use kernel_cmdline;
-use kvm_ioctls::{IoEventAddress, VmFd};
+use hypervisor::vm::{Vm};
+use hypervisor::x86_64::{IoEventAddress};
 use memory_model::GuestMemory;
 
 /// Errors for MMIO device manager.
@@ -92,7 +93,7 @@ impl MMIODeviceManager {
     /// Register a device to be used via MMIO transport.
     pub fn register_device(
         &mut self,
-        vm: &VmFd,
+        vm: &Box<Vm>,
         device: Box<devices::virtio::VirtioDevice>,
         cmdline: &mut kernel_cmdline::Cmdline,
         id: Option<String>,
@@ -108,7 +109,7 @@ impl MMIODeviceManager {
                 self.mmio_base + u64::from(devices::virtio::NOTIFY_REG_OFFSET),
             );
 
-            vm.register_ioevent(queue_evt.as_raw_fd(), &io_addr, i as u32)
+            vm.register_ioevent(queue_evt.as_raw_fd(), &io_addr, i as u64)
                 .map_err(Error::RegisterIoEvent)?;
         }
 

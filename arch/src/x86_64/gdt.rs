@@ -7,7 +7,7 @@
 
 // For GDT details see arch/x86/include/asm/segment.h
 
-use kvm_bindings::kvm_segment;
+use hypervisor::x86_64::SegmentRegister;
 
 /// Constructor for a conventional segment GDT (or LDT) entry. Derived from the kernel's segment.h.
 pub fn gdt_entry(flags: u16, base: u32, limit: u32) -> u64 {
@@ -66,8 +66,8 @@ fn get_type(entry: u64) -> u8 {
 ///
 /// * `entry` - The gdt entry.
 /// * `table_index` - Index of the entry in the gdt table.
-pub fn kvm_segment_from_gdt(entry: u64, table_index: u8) -> kvm_segment {
-    kvm_segment {
+pub fn segment_register_from_gdt(entry: u64, table_index: u8) -> SegmentRegister {
+    SegmentRegister {
         base: get_base(entry),
         limit: get_limit(entry),
         selector: u16::from(table_index * 8),
@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn field_parse() {
         let gdt = gdt_entry(0xA09B, 0x10_0000, 0xfffff);
-        let seg = kvm_segment_from_gdt(gdt, 0);
+        let seg = segment_register_from_gdt(gdt, 0);
         // 0xA09B
         // 'A'
         assert_eq!(0x1, seg.g);

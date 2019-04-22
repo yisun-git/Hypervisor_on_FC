@@ -10,8 +10,8 @@ use std::result;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use kvm_bindings::kvm_lapic_state;
-use kvm_ioctls::VcpuFd;
+use hypervisor::vcpu::Vcpu;
+use hypervisor::x86_64::LapicState;
 
 #[derive(Debug)]
 pub enum Error {
@@ -27,7 +27,7 @@ const APIC_LVT1: usize = 0x360;
 const APIC_MODE_NMI: u32 = 0x4;
 const APIC_MODE_EXTINT: u32 = 0x7;
 
-fn get_klapic_reg(klapic: &kvm_lapic_state, reg_offset: usize) -> u32 {
+fn get_klapic_reg(klapic: &LapicState, reg_offset: usize) -> u32 {
     let sliceu8 = unsafe {
         // This array is only accessed as parts of a u32 word, so interpret it as a u8 array.
         // Cursors are only readable on arrays of u8, not i8(c_char).
@@ -40,7 +40,7 @@ fn get_klapic_reg(klapic: &kvm_lapic_state, reg_offset: usize) -> u32 {
         .expect("Failed to read klapic register")
 }
 
-fn set_klapic_reg(klapic: &mut kvm_lapic_state, reg_offset: usize, value: u32) {
+fn set_klapic_reg(klapic: &mut LapicState, reg_offset: usize, value: u32) {
     let sliceu8 = unsafe {
         // This array is only accessed as parts of a u32 word, so interpret it as a u8 array.
         // Cursors are only readable on arrays of u8, not i8(c_char).
@@ -61,7 +61,7 @@ fn set_apic_delivery_mode(reg: u32, mode: u32) -> u32 {
 ///
 /// # Arguments
 /// * `vcpu` - The VCPU object to configure.
-pub fn set_lint(vcpu: &VcpuFd) -> Result<()> {
+pub fn set_lint(vcpu: &Box<Vcpu + Send>) -> Result<()> {
     let mut klapic = vcpu.get_lapic().map_err(Error::GetLapic)?;
 
     let lvt_lint0 = get_klapic_reg(&klapic, APIC_LVT0);
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_set_and_get_klapic_reg() {
         let reg_offset = 0x340;
-        let mut klapic = kvm_lapic_state::default();
+        let mut klapic = LapicState::default();
         set_klapic_reg(&mut klapic, reg_offset, 3);
         let value = get_klapic_reg(&klapic, reg_offset);
         assert_eq!(value, 3);
@@ -103,7 +103,7 @@ mod tests {
     #[should_panic]
     fn test_set_and_get_klapic_out_of_bounds() {
         let reg_offset = KVM_APIC_REG_SIZE + 10;
-        let mut klapic = kvm_lapic_state::default();
+        let mut klapic = LapicState::default();
         set_klapic_reg(&mut klapic, reg_offset, 3);
     }
 
@@ -126,7 +126,7 @@ mod tests {
         //the get_lapic ioctl will fail if there is no irqchip created beforehand.
         assert!(vm.create_irq_chip().is_ok());
         let vcpu = vm.create_vcpu(0).unwrap();
-        let klapic_before: kvm_lapic_state = vcpu.get_lapic().unwrap();
+        let klapic_before: LapicState = vcpu.get_lapic().unwrap();
 
         // Compute the value that is expected to represent LVT0 and LVT1.
         let lint0 = get_klapic_reg(&klapic_before, APIC_LVT0);
@@ -137,7 +137,7 @@ mod tests {
         set_lint(&vcpu).unwrap();
 
         // Compute the value that represents LVT0 and LVT1 after set_lint.
-        let klapic_actual: kvm_lapic_state = vcpu.get_lapic().unwrap();
+        let klapic_actual: LapicState = vcpu.get_lapic().unwrap();
         let lint0_mode_actual = get_klapic_reg(&klapic_actual, APIC_LVT0);
         let lint1_mode_actual = get_klapic_reg(&klapic_actual, APIC_LVT1);
         assert_eq!(lint0_mode_expected, lint0_mode_actual);

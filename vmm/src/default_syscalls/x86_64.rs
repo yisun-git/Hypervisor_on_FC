@@ -31,6 +31,7 @@ const TIOCGWINSZ: u64 = 0x5413;
 const FIOCLEX: u64 = 0x5451;
 const FIONBIO: u64 = 0x5421;
 
+// TODO: shall we move these KVM specific things to hypervisor or kvm?
 // See include/uapi/linux/if_tun.h in the kernel code.
 const KVM_GET_API_VERSION: u64 = 0xae00;
 const KVM_CREATE_VM: u64 = 0xae01;

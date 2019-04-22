@@ -13,14 +13,16 @@ use std::io;
 use std::os::raw::{c_char, c_ulong};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
-use cap::Cap;
+use cap::*;
 use ioctls::vec_with_array_field;
 use ioctls::vm::{new_vmfd, VmFd};
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use ioctls::CpuId;
 use ioctls::Result;
 use kvm_ioctls::*;
 use sys_ioctl::*;
+use hypervisor::*;
+use hypervisor::vm::*;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::x86_64::{ CpuId };
 
 /// Wrapper over KVM system ioctls.
 pub struct Kvm {
@@ -92,77 +94,13 @@ impl Kvm {
         }
     }
 
-    /// Returns the KVM API version.
-    ///
-    /// See the documentation for `KVM_GET_API_VERSION`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use kvm_ioctls::Kvm;
-    /// let kvm = Kvm::new().unwrap();
-    /// assert_eq!(kvm.get_api_version(), 12);
-    /// ```
-    ///
-    pub fn get_api_version(&self) -> i32 {
-        // Safe because we know that our file is a KVM fd and that the request is one of the ones
-        // defined by kernel.
-        unsafe { ioctl(self, KVM_GET_API_VERSION()) }
-    }
-
     /// Wrapper over `KVM_CHECK_EXTENSION`.
     ///
     /// Returns 0 if the capability is not available and a positive integer otherwise.
     fn check_extension_int(&self, c: Cap) -> i32 {
         // Safe because we know that our file is a KVM fd and that the extension is one of the ones
         // defined by kernel.
-        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), c as c_ulong) }
-    }
-
-    /// Checks if a particular `Cap` is available.
-    ///
-    /// Returns true if the capability is supported and false otherwise.
-    /// See the documentation for `KVM_CHECK_EXTENSION`.
-    ///
-    /// # Arguments
-    ///
-    /// * `c` - KVM capability to check.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use kvm_ioctls::Kvm;
-    /// use kvm_ioctls::Cap;
-    ///
-    /// let kvm = Kvm::new().unwrap();
-    /// // Check if `KVM_CAP_USER_MEMORY` is supported.
-    /// assert!(kvm.check_extension(Cap::UserMemory));
-    /// ```
-    ///
-    pub fn check_extension(&self, c: Cap) -> bool {
-        self.check_extension_int(c) > 0
-    }
-
-    ///  Returns the size of the memory mapping required to use the vcpu's `kvm_run` structure.
-    ///
-    /// See the documentation for `KVM_GET_VCPU_MMAP_SIZE`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use kvm_ioctls::Kvm;
-    /// let kvm = Kvm::new().unwrap();
-    /// assert!(kvm.get_vcpu_mmap_size().unwrap() > 0);
-    /// ```
-    ///
-    pub fn get_vcpu_mmap_size(&self) -> Result<usize> {
-        // Safe because we know that our file is a KVM fd and we verify the return result.
-        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE()) };
-        if res > 0 {
-            Ok(res as usize)
-        } else {
-            Err(io::Error::last_os_error())
-        }
+        unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), cap_conv(c) as c_ulong) }
     }
 
     /// Gets the recommended number of VCPUs per VM.
@@ -249,6 +187,72 @@ impl Kvm {
 
         Ok(cpuid)
     }
+}
+
+impl Hypervisor for Kvm {
+    /// Returns the KVM API version.
+    ///
+    /// See the documentation for `KVM_GET_API_VERSION`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use kvm_ioctls::Kvm;
+    /// let kvm = Kvm::new().unwrap();
+    /// assert_eq!(kvm.get_api_version(), 12);
+    /// ```
+    ///
+    fn get_api_version(&self) -> i32 {
+        // Safe because we know that our file is a KVM fd and that the request is one of the ones
+        // defined by kernel.
+        unsafe { ioctl(self, KVM_GET_API_VERSION()) }
+    }
+
+    /// Checks if a particular `Cap` is available.
+    ///
+    /// Returns true if the capability is supported and false otherwise.
+    /// See the documentation for `KVM_CHECK_EXTENSION`.
+    ///
+    /// # Arguments
+    ///
+    /// * `c` - KVM capability to check.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use kvm_ioctls::Kvm;
+    /// use kvm_ioctls::Cap;
+    ///
+    /// let kvm = Kvm::new().unwrap();
+    /// // Check if `KVM_CAP_USER_MEMORY` is supported.
+    /// assert!(kvm.check_extension(Cap::UserMemory));
+    /// ```
+    ///
+    fn check_extension(&self, c: Cap) -> bool {
+        self.check_extension_int(c) > 0
+    }
+
+    ///  Returns the size of the memory mapping required to use the vcpu's `kvm_run` structure.
+    ///
+    /// See the documentation for `KVM_GET_VCPU_MMAP_SIZE`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use kvm_ioctls::Kvm;
+    /// let kvm = Kvm::new().unwrap();
+    /// assert!(kvm.get_vcpu_mmap_size().unwrap() > 0);
+    /// ```
+    ///
+    fn get_vcpu_mmap_size(&self) -> Result<usize> {
+        // Safe because we know that our file is a KVM fd and we verify the return result.
+        let res = unsafe { ioctl(self, KVM_GET_VCPU_MMAP_SIZE()) };
+        if res > 0 {
+            Ok(res as usize)
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
 
     /// X86 specific call to get the system emulated CPUID values.
     ///
@@ -271,7 +275,7 @@ impl Kvm {
     /// ```
     ///
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_emulated_cpuid(&self, max_entries_count: usize) -> Result<CpuId> {
+    fn get_emulated_cpuid(&self, max_entries_count: usize) -> Result<CpuId> {
         self.get_cpuid(KVM_GET_EMULATED_CPUID(), max_entries_count)
     }
 
@@ -296,7 +300,7 @@ impl Kvm {
     /// ```
     ///
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_supported_cpuid(&self, max_entries_count: usize) -> Result<CpuId> {
+    fn get_supported_cpuid(&self, max_entries_count: usize) -> Result<CpuId> {
         self.get_cpuid(KVM_GET_SUPPORTED_CPUID(), max_entries_count)
     }
 
@@ -313,7 +317,7 @@ impl Kvm {
     /// let msr_index_list = kvm.get_msr_index_list().unwrap();
     /// ```
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_msr_index_list(&self) -> Result<Vec<u32>> {
+    fn get_msr_index_list(&self) -> Result<Vec<u32>> {
         const MAX_KVM_MSR_ENTRIES: usize = 256;
 
         let mut msr_list = vec_with_array_field::<kvm_msr_list, u32>(MAX_KVM_MSR_ENTRIES);
@@ -359,7 +363,7 @@ impl Kvm {
     /// assert!(vm.run_size() == kvm.get_vcpu_mmap_size().unwrap());
     /// ```
     ///
-    pub fn create_vm(&self) -> Result<VmFd> {
+    fn create_vm(&self) -> Result<Box<Vm>> {
         // Safe because we know `self.kvm` is a real KVM fd as this module is the only one that
         // create Kvm objects.
         let ret = unsafe { ioctl(&self.kvm, KVM_CREATE_VM()) };

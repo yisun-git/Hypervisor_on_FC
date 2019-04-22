@@ -5,43 +5,30 @@ use std::fs::File;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 
-use kvm_bindings::kvm_device_attr;
-
-use ioctls::Result;
 use kvm_ioctls::KVM_SET_DEVICE_ATTR;
+use ioctls::Result;
 use sys_ioctl::ioctl_with_ref;
+use hypervisor::x86_64::{ DeviceAttr };
+pub use hypervisor::vm::{ DeviceFd };
 
-/// Wrapper over the file descriptor obtained when creating an emulated device in the kernel.
-pub struct DeviceFd {
-    fd: File,
-}
-
-impl DeviceFd {
-    /// Sets a specified piece of device configuration and/or state.
-    ///
-    /// See the documentation for `KVM_SET_DEVICE_ATTR`.
-    /// # Arguments
-    ///
-    /// * `device_attr` - The device attribute to be set.
-    ///
-    pub fn set_device_attr(&self, device_attr: &kvm_device_attr) -> Result<()> {
-        let ret = unsafe { ioctl_with_ref(self, KVM_SET_DEVICE_ATTR(), device_attr) };
-        if ret != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(())
+/// Sets a specified piece of device configuration and/or state.
+///
+/// See the documentation for `KVM_SET_DEVICE_ATTR`.
+/// # Arguments
+///
+/// * `device_attr` - The device attribute to be set.
+///
+pub fn set_device_attr(device_fd: &DeviceFd, device_attr: &DeviceAttr) -> Result<()> {
+    let ret = unsafe { ioctl_with_ref(device_fd, KVM_SET_DEVICE_ATTR(), device_attr) };
+    if ret != 0 {
+        return Err(io::Error::last_os_error());
     }
+    Ok(())
 }
 
 /// Helper function for creating a new device.
 pub fn new_device(dev_fd: File) -> DeviceFd {
-    DeviceFd { fd: dev_fd }
-}
-
-impl AsRawFd for DeviceFd {
-    fn as_raw_fd(&self) -> RawFd {
-        self.fd.as_raw_fd()
-    }
+    DeviceFd::new(dev_fd)
 }
 
 #[cfg(test)]

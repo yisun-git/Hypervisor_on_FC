@@ -180,6 +180,7 @@
 
 extern crate kvm_bindings;
 extern crate libc;
+extern crate hypervisor;
 
 #[macro_use]
 mod sys_ioctl;
@@ -188,13 +189,10 @@ mod kvm_ioctls;
 mod cap;
 mod ioctls;
 
-pub use cap::Cap;
 pub use ioctls::device::DeviceFd;
 pub use ioctls::system::Kvm;
-pub use ioctls::vcpu::{VcpuExit, VcpuFd};
-pub use ioctls::vm::{IoEventAddress, NoDatamatch, VmFd};
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use ioctls::CpuId;
+pub use ioctls::vcpu::{VcpuFd};
+pub use ioctls::vm::{VmFd};
 // The following example is used to verify that our public
 // structures are exported properly.
 /// # Example
@@ -205,9 +203,6 @@ pub use ioctls::CpuId;
 /// ```
 pub use ioctls::{KvmRunWrapper, Result};
 
-/// Maximum number of CPUID entries that can be returned by a call to KVM ioctls.
-///
-/// This value is taken from Linux Kernel v4.14.13 (arch/x86/include/asm/kvm_host.h).
-/// It can be used for calls to [get_supported_cpuid](struct.Kvm.html#method.get_supported_cpuid) and
-/// [get_emulated_cpuid](struct.Kvm.html#method.get_emulated_cpuid).
-pub const MAX_KVM_CPUID_ENTRIES: usize = 80;
+use hypervisor::{ Hypervisor, Cap, Vm };
+use hypervisor::x86_64::{ CpuId, PitConfig, IoEventAddress };
+use hypervisor::vcpu::*;
