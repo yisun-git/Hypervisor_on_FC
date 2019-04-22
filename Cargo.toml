@@ -14,6 +14,7 @@ logger = { path = "logger" }
 mmds = { path = "mmds" }
 seccomp = { path = "seccomp" }
 vmm = { path = "vmm" }
+hypervisor = { path = "hypervisor" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 backtrace = {version = "0.3", features = ["libunwind", "libbacktrace"], default-features = false}
