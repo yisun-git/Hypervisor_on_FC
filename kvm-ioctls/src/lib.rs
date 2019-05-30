@@ -49,9 +49,12 @@
 //! ```rust
 //! extern crate kvm_ioctls;
 //! extern crate kvm_bindings;
+//! extern crate hypervisor;
 //!
-//! use kvm_ioctls::{Kvm, VmFd, VcpuFd};
-//! use kvm_ioctls::VcpuExit;
+//! use kvm_ioctls::Kvm;
+//! use hypervisor::Hypervisor;
+//! use hypervisor::vm::Vm;
+//! use hypervisor::vcpu::{Vcpu, VcpuExit};
 //!
 //! #[cfg(target_arch = "x86_64")]
 //! fn main(){
@@ -85,14 +88,8 @@
 //!     let slot = 0;
 //!     // When initializing the guest memory slot specify the
 //!     // `KVM_MEM_LOG_DIRTY_PAGES` to enable the dirty log.
-//!     let mem_region = kvm_userspace_memory_region {
-//!         slot,
-//!         guest_phys_addr: guest_addr,
-//!         memory_size: mem_size as u64,
-//!         userspace_addr: load_addr as u64,
-//!         flags: KVM_MEM_LOG_DIRTY_PAGES,
-//!     };
-//!     vm.set_user_memory_region(mem_region).unwrap();
+//!     vm.set_user_memory_region(slot, guest_addr, mem_size as u64, load_addr as u64,
+//!             KVM_MEM_LOG_DIRTY_PAGES).unwrap();
 //!
 //!
 //!     let x86_code = [

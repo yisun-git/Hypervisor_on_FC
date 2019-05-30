@@ -24,7 +24,8 @@ use std::{io, result};
 /// them more intuitive for consumption by non-KVM VMMs.
 ///
 
-//#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+pub use kvm_bindings::kvm_vcpu_init as VcpuInit;
 //pub use arm::{VcpuInit};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -204,7 +205,7 @@ pub trait Vcpu {
     /// Specifies the CPU to present to the guest, and the optional features
     /// it should have
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    fn vcpu_init(&self, kvi: &VcpuInit) -> Result<()>;
+    fn vcpu_init(&self, vi: &VcpuInit) -> Result<()>;
 
     /// Set a single register in the virtual CPU
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]

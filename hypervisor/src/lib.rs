@@ -17,11 +17,11 @@ extern crate kvm_bindings;
 pub mod vm;
 pub mod vcpu;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+//#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86_64;
 
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-mod arm;
+//#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+//mod arm;
 
 use std::{io, result};
 use std::boxed::Box;

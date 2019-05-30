@@ -50,7 +50,7 @@ pub type Result<T> = result::Result<T, Error>;
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
-pub fn setup_fpu(vcpu: &Box<Vcpu + Send>) -> Result<()> {
+pub fn setup_fpu(vcpu: &(Vcpu + Send + 'static)) -> Result<()> {
     let fpu: FpuState = FpuState {
         fcw: 0x37f,
         mxcsr: 0x1f80,
@@ -65,7 +65,7 @@ pub fn setup_fpu(vcpu: &Box<Vcpu + Send>) -> Result<()> {
 /// # Arguments
 ///
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
-pub fn setup_msrs(vcpu: &Box<Vcpu + Send>) -> Result<()> {
+pub fn setup_msrs(vcpu: &(Vcpu + Send + 'static)) -> Result<()> {
     let entry_vec = create_msr_entries();
     let vec_size_bytes =
         mem::size_of::<MsrEntries>() + (entry_vec.len() * mem::size_of::<MsrEntry>());
@@ -95,7 +95,7 @@ pub fn setup_msrs(vcpu: &Box<Vcpu + Send>) -> Result<()> {
 ///
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
 /// * `boot_ip` - Starting instruction pointer.
-pub fn setup_regs(vcpu: &Box<Vcpu + Send>, boot_ip: u64) -> Result<()> {
+pub fn setup_regs(vcpu: &(Vcpu + Send + 'static), boot_ip: u64) -> Result<()> {
     let regs: StandardRegisters = StandardRegisters {
         rflags: 0x0000_0000_0000_0002u64,
         rip: boot_ip,
@@ -119,7 +119,7 @@ pub fn setup_regs(vcpu: &Box<Vcpu + Send>, boot_ip: u64) -> Result<()> {
 ///
 /// * `mem` - The memory that will be passed to the guest.
 /// * `vcpu` - Structure for the VCPU that holds the VCPU's fd.
-pub fn setup_sregs(mem: &GuestMemory, vcpu: &Box<Vcpu + Send>) -> Result<()> {
+pub fn setup_sregs(mem: &GuestMemory, vcpu: &(Vcpu + Send + 'static)) -> Result<()> {
     let mut sregs: SpecialRegisters = vcpu.get_sregs().map_err(Error::GetStatusRegisters)?;
 
     configure_segments_and_sregs(mem, &mut sregs)?;
@@ -286,8 +286,12 @@ fn create_msr_entries() -> Vec<MsrEntry> {
 
 #[cfg(test)]
 mod tests {
+    extern crate kvm_bindings;
+    extern crate kvm_ioctls;
+
     use super::*;
     use kvm_ioctls::Kvm;
+    use hypervisor::*;
     use memory_model::{GuestAddress, GuestMemory};
 
     fn create_guest_mem() -> GuestMemory {
@@ -357,7 +361,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let vm = kvm.create_vm().unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
-        setup_fpu(&vcpu).unwrap();
+        setup_fpu(&(*vcpu)).unwrap();
 
         let expected_fpu: FpuState = FpuState {
             fcw: 0x37f,
@@ -380,7 +384,7 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         let vm = kvm.create_vm().unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
-        setup_msrs(&vcpu).unwrap();
+        setup_msrs(&(*vcpu)).unwrap();
 
         // This test will check against the last MSR entry configured (the tenth one).
         // See create_msr_entries for details.
@@ -431,7 +435,7 @@ mod tests {
             ..Default::default()
         };
 
-        setup_regs(&vcpu, expected_regs.rip).unwrap();
+        setup_regs(&(*vcpu), expected_regs.rip).unwrap();
 
         let actual_regs: StandardRegisters = vcpu.get_regs().unwrap();
         assert_eq!(actual_regs, expected_regs);
@@ -445,7 +449,7 @@ mod tests {
         let gm = create_guest_mem();
 
         assert!(vcpu.set_sregs(&Default::default()).is_ok());
-        setup_sregs(&gm, &vcpu).unwrap();
+        setup_sregs(&gm, &(*vcpu)).unwrap();
 
         let mut sregs: SpecialRegisters = vcpu.get_sregs().unwrap();
         // for AMD KVM_GET_SREGS returns g = 0 for each kvm_segment.

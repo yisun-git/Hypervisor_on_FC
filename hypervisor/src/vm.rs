@@ -17,8 +17,9 @@ use std::fs::File;
 use std::os::unix::io::{AsRawFd, RawFd};
 
 use crate::vcpu::Vcpu;
-
-pub use crate::x86_64::{ PitConfig, IoEventAddress, CreateDevice, DeviceAttr };
+use crate::x86_64::{IoEventAddress, CreateDevice};
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::x86_64::PitConfig;
 
 // TODO: should move to arm specific file.
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -47,7 +48,7 @@ impl AsRawFd for DeviceFd {
 }
 
 pub trait Vm {
-    fn create_vcpu(&self, id: u8) -> Result<Box<Vcpu + Send>>;
+    fn create_vcpu(&self, id: u8) -> Result<Box<Vcpu + Send + 'static>>;
     fn set_user_memory_region(&self,
                               slot: u32,
                               guest_phys_addr: u64,

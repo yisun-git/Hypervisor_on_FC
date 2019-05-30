@@ -458,7 +458,7 @@ pub struct HypContext {
 }
 
 impl HypContext {
-    fn new() -> Result<Self> {
+    fn new(num_memslots: usize) -> Result<Self> {
         fn check_cap<T: Hypervisor>(h: &T, cap: Cap) -> std::result::Result<(), Error> {
             if !h.check_extension(cap) {
                 return Err(Error::HypCap(cap));
@@ -483,13 +483,18 @@ impl HypContext {
         #[cfg(target_arch = "aarch64")]
         check_cap(&h, Cap::ArmPsci02)?;
 
-        let max_memslots = h.get_nr_memslots();
+        let max_memslots = if num_memslots != 0 {
+                num_memslots
+            } else {
+                h.get_nr_memslots()
+            };
+
         let hyp = Box::new(h);
         Ok(HypContext { hyp, max_memslots })
     }
 
-    fn fd(&self) -> &Box<Hypervisor> {
-        &self.hyp
+    fn fd(&self) -> &Hypervisor {
+        &(*self.hyp)
     }
 
     /// Get the maximum number of memory slots reported by this hypervisor context.
@@ -756,7 +761,7 @@ impl Vmm {
             .expect("Cannot add write metrics TimerFd to epoll.");
 
         let block_device_configs = BlockDeviceConfigs::new();
-        let hyp = HypContext::new()?;
+        let hyp = HypContext::new(0)?;
         let vm = GuestVm::new(hyp.fd()).map_err(Error::Vm)?;
         println!(" *** Sun Yi: HypContext created!");
 
@@ -2623,11 +2628,11 @@ mod tests {
         use std::os::unix::fs::MetadataExt;
         use std::os::unix::io::FromRawFd;
 
-        let c = KvmContext::new().unwrap();
+        let kvm = Kvm::new().unwrap();
+        let c = HypContext::new(kvm.get_nr_memslots()).unwrap();
 
         assert!(c.max_memslots >= 32);
 
-        let kvm = Kvm::new().unwrap();
         let f = unsafe { File::from_raw_fd(kvm.as_raw_fd()) };
         let m1 = f.metadata().unwrap();
         let m2 = File::open("/dev/kvm").unwrap().metadata().unwrap();
@@ -3502,15 +3507,15 @@ mod tests {
             "Device event handler not found. This might point to a guest device driver issue."
         );
         assert_eq!(
-            format!("{:?}", Error::Kvm(io::Error::from_raw_os_error(42))),
+            format!("{:?}", Error::Hypervisor(io::Error::from_raw_os_error(42))),
             "Cannot open /dev/kvm. Error: No message of desired type (os error 42)"
         );
         assert_eq!(
-            format!("{:?}", Error::KvmApiVersion(42)),
+            format!("{:?}", Error::HypApiVersion(42)),
             "Bad hypervisor API version: 42"
         );
         assert_eq!(
-            format!("{:?}", Error::KvmCap(Cap::Hlt)),
+            format!("{:?}", Error::HypCap(Cap::Hlt)),
             "Missing hypervisor capability: Hlt"
         );
         assert_eq!(

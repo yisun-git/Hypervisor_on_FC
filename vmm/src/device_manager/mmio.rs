@@ -93,7 +93,7 @@ impl MMIODeviceManager {
     /// Register a device to be used via MMIO transport.
     pub fn register_device(
         &mut self,
-        vm: &Box<Vm>,
+        vm: &Vm,
         device: Box<devices::virtio::VirtioDevice>,
         cmdline: &mut kernel_cmdline::Cmdline,
         id: Option<String>,

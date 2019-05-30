@@ -44,12 +44,15 @@ mod brand_string;
 /// ```
 /// extern crate cpuid;
 /// extern crate kvm_ioctls;
+/// extern crate hypervisor;
 ///
 /// use cpuid::filter_cpuid;
-/// use kvm_ioctls::{CpuId, Kvm, MAX_KVM_CPUID_ENTRIES};
+/// use kvm_ioctls::Kvm;
+/// use hypervisor::Hypervisor;
+/// use hypervisor::vcpu::{CpuId, MAX_CPUID_ENTRIES};
 ///
 /// let kvm = Kvm::new().unwrap();
-/// let mut kvm_cpuid: CpuId = kvm.get_supported_cpuid(MAX_KVM_CPUID_ENTRIES).unwrap();
+/// let mut kvm_cpuid: CpuId = kvm.get_supported_cpuid(MAX_CPUID_ENTRIES).unwrap();
 /// filter_cpuid(0, 1, true, &mut kvm_cpuid).unwrap();
 ///
 /// // Get expected `kvm_cpuid` entries.

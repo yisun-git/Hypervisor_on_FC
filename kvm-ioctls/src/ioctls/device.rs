@@ -35,6 +35,9 @@ pub fn new_device(dev_fd: File) -> DeviceFd {
 mod tests {
     use super::*;
     use ioctls::system::Kvm;
+    use hypervisor::*;
+    use hypervisor::vm::*;
+    use hypervisor::x86_64::*;
     use kvm_bindings::{
         kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V3, kvm_device_type_KVM_DEV_TYPE_FSL_MPIC_20,
         kvm_device_type_KVM_DEV_TYPE_VFIO, KVM_CREATE_DEVICE_TEST, KVM_DEV_VFIO_GROUP,
@@ -75,10 +78,10 @@ mod tests {
             addr: 0x0,
             flags: 0,
         };
-        device_fd.set_device_attr(&dist_attr);
+        set_device_attr(&device_fd, &dist_attr);
         // We are just creating a test device. Creating a real device would make the CI dependent
         // on host configuration (like having /dev/vfio). We expect this to fail.
-        assert!(device_fd.set_device_attr(&dist_attr).is_err());
+        assert!(set_device_attr(&device_fd, &dist_attr).is_err());
         assert_eq!(io::Error::last_os_error().raw_os_error().unwrap(), 25);
     }
 }

@@ -61,7 +61,7 @@ fn set_apic_delivery_mode(reg: u32, mode: u32) -> u32 {
 ///
 /// # Arguments
 /// * `vcpu` - The VCPU object to configure.
-pub fn set_lint(vcpu: &Box<Vcpu + Send>) -> Result<()> {
+pub fn set_lint(vcpu: &(Vcpu + Send + 'static)) -> Result<()> {
     let mut klapic = vcpu.get_lapic().map_err(Error::GetLapic)?;
 
     let lvt_lint0 = get_klapic_reg(&klapic, APIC_LVT0);
@@ -83,10 +83,14 @@ pub fn set_lint(vcpu: &Box<Vcpu + Send>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     extern crate rand;
-    use self::rand::Rng;
 
-    use super::*;
+    use self::rand::Rng;
     use kvm_ioctls::Kvm;
+    use hypervisor::*;
+    use hypervisor::x86_64::LapicState;
+    use x86_64::interrupts::*;
+    use x86_64::interrupts::set_klapic_reg;
+    use x86_64::interrupts::get_klapic_reg;
 
     const KVM_APIC_REG_SIZE: usize = 0x400;
 
@@ -121,7 +125,7 @@ mod tests {
     #[test]
     fn test_setlint() {
         let kvm = Kvm::new().unwrap();
-        assert!(kvm.check_extension(kvm_ioctls::Cap::Irqchip));
+        assert!(kvm.check_extension(hypervisor::Cap::Irqchip));
         let vm = kvm.create_vm().unwrap();
         //the get_lapic ioctl will fail if there is no irqchip created beforehand.
         assert!(vm.create_irq_chip().is_ok());
@@ -134,7 +138,7 @@ mod tests {
         let lint0_mode_expected = set_apic_delivery_mode(lint0, APIC_MODE_EXTINT);
         let lint1_mode_expected = set_apic_delivery_mode(lint1, APIC_MODE_NMI);
 
-        set_lint(&vcpu).unwrap();
+        set_lint(&(*vcpu)).unwrap();
 
         // Compute the value that represents LVT0 and LVT1 after set_lint.
         let klapic_actual: LapicState = vcpu.get_lapic().unwrap();
@@ -151,6 +155,6 @@ mod tests {
         let vcpu = vm.create_vcpu(0).unwrap();
         // 'get_lapic' ioctl triggered by the 'set_lint' function will fail if there is no
         // irqchip created beforehand.
-        assert!(set_lint(&vcpu).is_err());
+        assert!(set_lint(&(*vcpu)).is_err());
     }
 }

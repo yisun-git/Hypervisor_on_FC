@@ -6,10 +6,12 @@ authors = ["The Chromium OS Authors"]
 [dependencies]
 byteorder = "=1.2.1"
 libc = ">=0.2.39"
+kvm-bindings = "0.1"
 
 arch_gen = { path = "../arch_gen" }
 memory_model = { path = "../memory_model" }
 hypervisor = { path = "../hypervisor" }
+kvm-ioctls = { path = "../kvm-ioctls" }
 
 [dev-dependencies]
 rand = ">=0.5.5"

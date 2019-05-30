@@ -3,9 +3,10 @@ name = "hypervisor"
 version = "0.1.0"
 authors = ["Yi Sun <yi.y.sun@linux.intel.com>"]
 edition = "2018"
+[dependencies.kvm-bindings]
+version = ">=0.1.0"
 
 [dependencies]
 byteorder = "*"
-kvm-bindings = "0.1"
 libc = ">=0.2.39"
 sys_util = { path = "../sys_util" }

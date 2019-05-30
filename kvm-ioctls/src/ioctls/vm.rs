@@ -45,21 +45,17 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
+    /// # extern crate hypervisor;
     /// extern crate kvm_bindings;
     ///
-    /// use kvm_ioctls::{Kvm, VmFd};
+    /// use kvm_ioctls::Kvm;
+    /// use hypervisor::Hypervisor;
+    /// use hypervisor::vm::Vm;
     /// use kvm_bindings::kvm_userspace_memory_region;
     ///
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
-    /// let mem_region = kvm_userspace_memory_region {
-    ///                     slot: 0,
-    ///                     guest_phys_addr: 0x1000 as u64,
-    ///                     memory_size: 0x4000 as u64,
-    ///                     userspace_addr: 0x0 as u64,
-    ///                     flags: 0,
-    ///                 };
-    /// vm.set_user_memory_region(mem_region).unwrap();
+    /// vm.set_user_memory_region(0, 0x1000 as u64, 0x4000 as u64, 0x0 as u64, 0).unwrap();
     /// ```
     ///
     fn set_user_memory_region(
@@ -98,7 +94,10 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd};
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// vm.set_tss_address(0xfffb_d000).unwrap();
@@ -123,7 +122,10 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd};
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     ///
@@ -157,13 +159,15 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
-    /// extern crate kvm_bindings;
-    /// # use kvm_ioctls::{Kvm, VmFd};
-    /// use kvm_bindings::kvm_pit_config;
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::x86_64::PitConfig;
     ///
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
-    /// let pit_config = kvm_pit_config::default();
+    /// let pit_config = PitConfig::default();
     /// vm.create_pit2(pit_config).unwrap();
     /// ```
     ///
@@ -196,18 +200,22 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
+    /// # extern crate hypervisor;
     /// extern crate libc;
-    /// # use kvm_ioctls::{IoEventAddress, Kvm, NoDatamatch, VmFd};
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::x86_64::IoEventAddress;
     /// use libc::{eventfd, EFD_NONBLOCK};
     ///
     /// let kvm = Kvm::new().unwrap();
     /// let vm_fd = kvm.create_vm().unwrap();
     /// let evtfd = unsafe { eventfd(0, EFD_NONBLOCK) };
     /// vm_fd
-    ///    .register_ioevent(evtfd, &IoEventAddress::Pio(0xf4), NoDatamatch)
+    ///    .register_ioevent(evtfd, &IoEventAddress::Pio(0xf4), 0)
     ///    .unwrap();
     /// vm_fd
-    ///    .register_ioevent(evtfd, &IoEventAddress::Mmio(0x1000), NoDatamatch)
+    ///    .register_ioevent(evtfd, &IoEventAddress::Mmio(0x1000), 0)
     ///    .unwrap();
     /// ```
     ///
@@ -226,7 +234,7 @@ impl Vm for VmFd {
         }
 
         let ioeventfd = kvm_ioeventfd {
-            datamatch: datamatch,
+            datamatch,
             len: 4,
             addr: match addr {
                 IoEventAddress::Pio(ref p) => *p as u64,
@@ -263,11 +271,15 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
+    /// # extern crate hypervisor;
     /// # extern crate kvm_bindings;
     /// # use std::io::Write;
     /// # use std::ptr::null_mut;
     /// # use std::slice;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd, VcpuExit};
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::{Vcpu, VcpuExit};
     /// # use kvm_bindings::{kvm_userspace_memory_region, KVM_MEM_LOG_DIRTY_PAGES};
     /// # let kvm = Kvm::new().unwrap();
     /// # let vm = kvm.create_vm().unwrap();
@@ -286,14 +298,8 @@ impl Vm for VmFd {
     /// };
     ///
     /// // Initialize a guest memory region using the flag `KVM_MEM_LOG_DIRTY_PAGES`.
-    /// let mem_region = kvm_userspace_memory_region {
-    ///     slot: 0,
-    ///     guest_phys_addr: guest_addr,
-    ///     memory_size: mem_size as u64,
-    ///     userspace_addr: load_addr as u64,
-    ///     flags: KVM_MEM_LOG_DIRTY_PAGES,
-    /// };
-    /// vm.set_user_memory_region(mem_region).unwrap();
+    /// vm.set_user_memory_region(0, guest_addr, mem_size as u64, load_addr as u64,
+    ///         KVM_MEM_LOG_DIRTY_PAGES).unwrap();
     ///
     /// // Dummy x86 code that just calls halt.
     /// let x86_code = [
@@ -380,8 +386,11 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
+    /// # extern crate hypervisor;
     /// # extern crate libc;
-    /// # use kvm_ioctls::{Kvm, VmFd};
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
     /// # use libc::{eventfd, EFD_NONBLOCK};
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
@@ -430,14 +439,18 @@ impl Vm for VmFd {
     ///
     /// ```rust
     /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// // Create one vCPU with the ID=0.
     /// let vcpu = vm.create_vcpu(0);
     /// ```
     ///
-    fn create_vcpu(&self, id: u8) -> Result<Box<Vcpu + Send>> {
+    fn create_vcpu(&self, id: u8) -> Result<Box<Vcpu + Send + 'static>> {
         // Safe because we know that vm is a VM fd and we verify the return result.
         #[allow(clippy::cast_lossless)]
         let vcpu_fd = unsafe { ioctl_with_val(&self.vm, KVM_CREATE_VCPU(), id as c_ulong) };
@@ -468,7 +481,11 @@ impl Vm for VmFd {
     /// ```rust
     /// # extern crate kvm_ioctls;
     /// # extern crate kvm_bindings;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// use kvm_bindings::{
     ///     kvm_device_type_KVM_DEV_TYPE_VFIO,
     ///     kvm_device_type_KVM_DEV_TYPE_ARM_VGIC_V3,
@@ -495,9 +512,9 @@ impl Vm for VmFd {
     fn create_device(&self, device: &mut kvm_create_device) -> Result<DeviceFd> {
         let ret = unsafe { ioctl_with_ref(self, KVM_CREATE_DEVICE(), device) };
         if ret == 0 {
-            Ok((new_device(unsafe { File::from_raw_fd(device.fd as i32) })))
+            Ok(new_device(unsafe { File::from_raw_fd(device.fd as i32) }))
         } else {
-            return Err(io::Error::last_os_error());
+            Err(io::Error::last_os_error())
         }
     }
 
@@ -561,7 +578,10 @@ impl AsRawFd for VmFd {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {Cap, Kvm, MAX_KVM_CPUID_ENTRIES};
+    use Kvm;
+    use hypervisor::*;
+    use hypervisor::vm::*;
+    use hypervisor::vcpu::*;
 
     use libc::{eventfd, EFD_NONBLOCK};
 
@@ -569,14 +589,7 @@ mod tests {
     fn test_set_invalid_memory() {
         let kvm = Kvm::new().unwrap();
         let vm = kvm.create_vm().unwrap();
-        let invalid_mem_region = kvm_userspace_memory_region {
-            slot: 0,
-            guest_phys_addr: 0,
-            memory_size: 0,
-            userspace_addr: 0,
-            flags: 0,
-        };
-        assert!(vm.set_user_memory_region(invalid_mem_region).is_err());
+        assert!(vm.set_user_memory_region(0, 0, 0, 0, 0).is_err());
     }
 
     #[test]
@@ -616,25 +629,23 @@ mod tests {
 
     #[test]
     fn test_register_ioevent() {
-        assert_eq!(std::mem::size_of::<NoDatamatch>(), 0);
-
         let kvm = Kvm::new().unwrap();
         let vm_fd = kvm.create_vm().unwrap();
         let evtfd = unsafe { eventfd(0, EFD_NONBLOCK) };
         assert!(vm_fd
-            .register_ioevent(evtfd, &IoEventAddress::Pio(0xf4), NoDatamatch)
+            .register_ioevent(evtfd, &IoEventAddress::Pio(0xf4), 0)
             .is_ok());
         assert!(vm_fd
-            .register_ioevent(evtfd, &IoEventAddress::Mmio(0x1000), NoDatamatch)
+            .register_ioevent(evtfd, &IoEventAddress::Mmio(0x1000), 0)
             .is_ok());
         assert!(vm_fd
-            .register_ioevent(evtfd, &IoEventAddress::Pio(0xc1), 0x7fu8)
+            .register_ioevent(evtfd, &IoEventAddress::Pio(0xc1), 0x7fu64)
             .is_ok());
         assert!(vm_fd
-            .register_ioevent(evtfd, &IoEventAddress::Pio(0xc2), 0x1337u16)
+            .register_ioevent(evtfd, &IoEventAddress::Pio(0xc2), 0x1337u64)
             .is_ok());
         assert!(vm_fd
-            .register_ioevent(evtfd, &IoEventAddress::Pio(0xc4), 0xdead_beefu32)
+            .register_ioevent(evtfd, &IoEventAddress::Pio(0xc4), 0xdead_beefu64)
             .is_ok());
         assert!(vm_fd
             .register_ioevent(evtfd, &IoEventAddress::Pio(0xc8), 0xdead_beef_dead_beefu64)
@@ -681,16 +692,8 @@ mod tests {
             run_size: 0,
         };
 
-        let invalid_mem_region = kvm_userspace_memory_region {
-            slot: 0,
-            guest_phys_addr: 0,
-            memory_size: 0,
-            userspace_addr: 0,
-            flags: 0,
-        };
-
         assert_eq!(
-            get_raw_errno(faulty_vm_fd.set_user_memory_region(invalid_mem_region)),
+            get_raw_errno(faulty_vm_fd.set_user_memory_region(0, 0, 0, 0, 0)),
             badf_errno
         );
         assert_eq!(get_raw_errno(faulty_vm_fd.set_tss_address(0)), badf_errno);

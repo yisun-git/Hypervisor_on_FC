@@ -11,6 +11,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the THIRD-PARTY file.
 
+extern crate kvm_bindings;
+
 use std::mem::size_of;
 
 pub const PIT_SPEAKER_DUMMY: u32 = 1;
@@ -19,6 +21,19 @@ pub use kvm_bindings::KVM_API_VERSION as API_VERSION;
 pub use kvm_bindings::kvm_create_device as CreateDevice;
 pub use kvm_bindings::kvm_device_attr as DeviceAttr;
 
+pub use kvm_bindings::kvm_pit_config as PitConfig;
+pub use kvm_bindings::kvm_msr_entry as MsrEntry;
+pub use kvm_bindings::kvm_msrs as MsrEntries;
+pub use kvm_bindings::kvm_regs as StandardRegisters;
+pub use kvm_bindings::kvm_sregs as SpecialRegisters;
+pub use kvm_bindings::kvm_segment as SegmentRegister;
+pub use kvm_bindings::kvm_dtable as DescriptorTable;
+pub use kvm_bindings::kvm_fpu as FpuState;
+pub use kvm_bindings::kvm_cpuid_entry2 as CpuIdEntry2;
+pub use kvm_bindings::kvm_cpuid2 as CpuId2;
+pub use kvm_bindings::kvm_lapic_state as LapicState;
+
+/*
 ///
 /// Use kvm_bindings behind the scenes as these are architectural structures and
 /// not actually KVM-dependent, but export as generically-named data
@@ -34,6 +49,8 @@ pub use kvm_bindings::kvm_pit_config as PitConfig;
 ///     pub reserved: __u32,
 ///     pub data: __u64,
 /// }
+///
+
 pub use kvm_bindings::kvm_msr_entry as MsrEntry;
 
 /// Array of MSR entries
@@ -44,6 +61,8 @@ pub use kvm_bindings::kvm_msr_entry as MsrEntry;
 ///     pub pad: __u32,
 ///     pub entries: __IncompleteArrayField<kvm_msr_entry>,
 /// }
+///
+
 pub use kvm_bindings::kvm_msrs as MsrEntries;
 
 /// Standard registers (general purpose plus instruction pointer and flags)
@@ -68,6 +87,8 @@ pub use kvm_bindings::kvm_msrs as MsrEntries;
 ///    pub rip: __u64,
 ///    pub rflags: __u64,
 /// }
+///
+
 pub use kvm_bindings::kvm_regs as StandardRegisters;
 
 /// Special registers (segment, task, descriptor table, control, and additional
@@ -93,6 +114,8 @@ pub use kvm_bindings::kvm_regs as StandardRegisters;
 ///    pub apic_base: __u64,
 ///    pub interrupt_bitmap: [__u64; 4usize],
 /// }
+///
+
 pub use kvm_bindings::kvm_sregs as SpecialRegisters;
 
 /// Segment register (used for CS, DS, ES, FS, GS, SS)
@@ -112,6 +135,8 @@ pub use kvm_bindings::kvm_sregs as SpecialRegisters;
 ///    pub unusable: __u8,
 ///    pub padding: __u8,
 /// }
+///
+
 pub use kvm_bindings::kvm_segment as SegmentRegister;
 
 /// Descriptor Table
@@ -121,6 +146,8 @@ pub use kvm_bindings::kvm_segment as SegmentRegister;
 ///     pub limit: __u16,
 ///     pub padding: [__u16; 3usize],
 /// }
+///
+
 pub use kvm_bindings::kvm_dtable as DescriptorTable;
 
 /// Floating Pointe Unit State
@@ -138,6 +165,8 @@ pub use kvm_bindings::kvm_dtable as DescriptorTable;
 ///    pub mxcsr: __u32,
 ///    pub pad2: __u32,
 /// }
+///
+
 pub use kvm_bindings::kvm_fpu as FpuState;
 
 /// Entry describing a CPUID feature/leaf. Features can be set as responses to
@@ -152,7 +181,9 @@ pub use kvm_bindings::kvm_fpu as FpuState;
 ///    pub edx: __u32,
 ///    pub padding: [__u32; 3usize],
 /// }
-use kvm_bindings::kvm_cpuid_entry2 as CpuIdEntry2;
+///
+
+pub use kvm_bindings::kvm_cpuid_entry2 as CpuIdEntry2;
 
 /// Array of CpuId2 entries, each of which describing a feature/leaf to be set
 /// pub struct kvm_cpuid2 {
@@ -160,7 +191,9 @@ use kvm_bindings::kvm_cpuid_entry2 as CpuIdEntry2;
 ///    pub padding: __u32,
 ///    pub entries: __IncompleteArrayField<kvm_cpuid_entry2>,
 /// }
-use kvm_bindings::kvm_cpuid2 as CpuId2;
+///
+
+pub use kvm_bindings::kvm_cpuid2 as CpuId2;
 
 /// Unix definition of the LAPIC state, the set of memory mapped registers that
 /// describe the Local APIC. Unix-based VMMs only require 1KB of memory to
@@ -169,8 +202,11 @@ use kvm_bindings::kvm_cpuid2 as CpuId2;
 /// pub struct kvm_lapic_state {
 ///    pub regs: [::std::os::raw::c_char; 1024usize],
 /// }
+///
+
 #[cfg(unix)]
 pub use kvm_bindings::kvm_lapic_state as LapicState;
+*/
 
 /// Windows definition of the LAPIC state, the set of memory mapped registers
 /// that describe the Local APIC. Windows-based VMMs require 4KB of memory to

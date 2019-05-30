@@ -110,8 +110,12 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate kvm_ioctls; 
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -141,8 +145,12 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate kvm_ioctls; 
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -176,8 +184,12 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate kvm_ioctls; 
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -208,8 +220,12 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate kvm_ioctls; 
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -242,8 +258,12 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate kvm_ioctls; 
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -275,10 +295,14 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
+    /// # extern crate kvm_ioctls; 
     /// # extern crate kvm_bindings;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
     /// # use kvm_bindings::kvm_fpu;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -315,12 +339,16 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     ///  ```rust
-    /// # extern crate kvm_ioctls;
+    /// # extern crate kvm_ioctls; 
     /// # extern crate kvm_bindings;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd, MAX_KVM_CPUID_ENTRIES};
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
     /// # use kvm_bindings::kvm_fpu;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::{Vcpu, MAX_CPUID_ENTRIES};
     /// let kvm = Kvm::new().unwrap();
-    /// let mut kvm_cpuid = kvm.get_supported_cpuid(MAX_KVM_CPUID_ENTRIES).unwrap();
+    /// let mut kvm_cpuid = kvm.get_supported_cpuid(MAX_CPUID_ENTRIES).unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
     ///
@@ -360,8 +388,12 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate kvm_ioctls; 
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// // For `get_lapic` to work, you first need to create a IRQ chip before creating the vCPU.
@@ -396,8 +428,12 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate kvm_ioctls; 
+    /// # extern crate hypervisor; 
+    /// # use kvm_ioctls::Kvm;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// use std::io::Write;
     ///
     /// let kvm = Kvm::new().unwrap();
@@ -444,10 +480,14 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
+    /// # extern crate kvm_ioctls; 
     /// # extern crate kvm_bindings;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
     /// # use kvm_bindings::kvm_msrs;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -478,10 +518,14 @@ impl Vcpu for VcpuFd {
     /// # Example
     ///
     /// ```rust
-    /// # extern crate kvm_ioctls;
+    /// # extern crate kvm_ioctls; 
     /// # extern crate kvm_bindings;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
     /// # use kvm_bindings::{kvm_msrs, kvm_msr_entry};
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// # use std::mem;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
@@ -534,10 +578,14 @@ impl Vcpu for VcpuFd {
     ///
     /// # Example
     /// ```rust
-    /// # extern crate kvm_ioctls;
+    /// # extern crate kvm_ioctls; 
     /// # extern crate kvm_bindings;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd};
+    /// # extern crate hypervisor;
+    /// # use kvm_ioctls::Kvm;
     /// use kvm_bindings::kvm_vcpu_init;
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::Vcpu;
     /// let kvm = Kvm::new().unwrap();
     /// let vm = kvm.create_vm().unwrap();
     /// let vcpu = vm.create_vcpu(0).unwrap();
@@ -593,11 +641,15 @@ impl Vcpu for VcpuFd {
     /// ```rust
     /// # extern crate kvm_ioctls;
     /// # extern crate kvm_bindings;
+    /// # extern crate hypervisor;
     /// # use std::io::Write;
     /// # use std::ptr::null_mut;
     /// # use std::slice;
-    /// # use kvm_ioctls::{Kvm, VmFd, VcpuFd, VcpuExit};
+    /// # use kvm_ioctls::Kvm;
     /// # use kvm_bindings::{kvm_userspace_memory_region, KVM_MEM_LOG_DIRTY_PAGES};
+    /// # use hypervisor::Hypervisor;
+    /// # use hypervisor::vm::Vm;
+    /// # use hypervisor::vcpu::{Vcpu, VcpuExit};
     /// # let kvm = Kvm::new().unwrap();
     /// # let vm = kvm.create_vm().unwrap();
     /// // This is a dummy example for running on x86 based on https://lwn.net/Articles/658511/.
@@ -615,14 +667,7 @@ impl Vcpu for VcpuFd {
     ///         ) as *mut u8
     ///     };
     ///
-    ///     let mem_region = kvm_userspace_memory_region {
-    ///         slot: 0,
-    ///         guest_phys_addr: guest_addr,
-    ///         memory_size: mem_size as u64,
-    ///         userspace_addr: load_addr as u64,
-    ///         flags: 0,
-    ///     };
-    ///     vm.set_user_memory_region(mem_region).unwrap();
+    ///     vm.set_user_memory_region(0, guest_addr, mem_size as u64, load_addr as u64, 0).unwrap();
     ///
     ///     // Dummy x86 code that just calls halt.
     ///     let x86_code = [
@@ -742,7 +787,7 @@ impl Vcpu for VcpuFd {
 /// This should not be exported as a public function because the preferred way is to use
 /// `create_vcpu` from `VmFd`. The function cannot be part of the `VcpuFd` implementation because
 /// then it would be exported with the public `VcpuFd` interface.
-pub fn new_vcpu(vcpu: File, kvm_run_ptr: KvmRunWrapper) -> Box<Vcpu + Send> {
+pub fn new_vcpu(vcpu: File, kvm_run_ptr: KvmRunWrapper) -> Box<Vcpu + Send + 'static> {
     Box::new(VcpuFd { vcpu, kvm_run_ptr })
 }
 
@@ -758,8 +803,9 @@ mod tests {
 
     use super::*;
     use ioctls::system::Kvm;
-    use Cap;
-    use MAX_KVM_CPUID_ENTRIES;
+    use hypervisor::*;
+    use hypervisor::vm::*;
+    use hypervisor::vcpu::*;
 
     use std::os::unix::io::FromRawFd;
     use std::ptr::null_mut;
@@ -798,8 +844,8 @@ mod tests {
         let kvm = Kvm::new().unwrap();
         if kvm.check_extension(Cap::ExtCpuid) {
             let vm = kvm.create_vm().unwrap();
-            let mut cpuid = kvm.get_supported_cpuid(MAX_KVM_CPUID_ENTRIES).unwrap();
-            assert!(cpuid.mut_entries_slice().len() <= MAX_KVM_CPUID_ENTRIES);
+            let mut cpuid = kvm.get_supported_cpuid(MAX_CPUID_ENTRIES).unwrap();
+            assert!(cpuid.mut_entries_slice().len() <= MAX_CPUID_ENTRIES);
             let nr_vcpus = kvm.get_nr_vcpus();
             for cpu_id in 0..nr_vcpus {
                 let vcpu = vm.create_vcpu(cpu_id as u8).unwrap();
@@ -955,14 +1001,7 @@ mod tests {
         let load_addr = mmap_anonymous(mem_size);
         let guest_addr: u64 = 0x1000;
         let slot: u32 = 0;
-        let mem_region = kvm_userspace_memory_region {
-            slot,
-            guest_phys_addr: guest_addr,
-            memory_size: mem_size as u64,
-            userspace_addr: load_addr as u64,
-            flags: KVM_MEM_LOG_DIRTY_PAGES,
-        };
-        vm.set_user_memory_region(mem_region).unwrap();
+        vm.set_user_memory_region(slot, guest_addr, mem_size as u64, load_addr as u64, KVM_MEM_LOG_DIRTY_PAGES).unwrap();
 
         unsafe {
             // Get a mutable slice of `mem_size` from `load_addr`.
@@ -1061,7 +1100,7 @@ mod tests {
                 faulty_vcpu_fd.set_cpuid2(
                     &Kvm::new()
                         .unwrap()
-                        .get_supported_cpuid(MAX_KVM_CPUID_ENTRIES)
+                        .get_supported_cpuid(MAX_CPUID_ENTRIES)
                         .unwrap()
                 )
             ),

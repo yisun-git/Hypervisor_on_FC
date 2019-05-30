@@ -17,7 +17,6 @@ use cpuid::{c3, filter_cpuid, t2};
 use default_syscalls;
 use hypervisor::*;
 use hypervisor::vcpu::*;
-use hypervisor::vm::*;
 use hypervisor::x86_64::*;
 use logger::{LogOption, Metric, LOGGER, METRICS};
 use memory_model::{GuestAddress, GuestMemory, GuestMemoryError};
@@ -111,7 +110,7 @@ pub struct GuestVm {
 
 impl GuestVm {
     /// Constructs a new `Vm` using the given `Hypervisor` instance.
-    pub fn new(hyp: &Box<Hypervisor>) -> Result<Self> {
+    pub fn new(hyp: &Hypervisor) -> Result<Self> {
         //create fd for interacting with vm specific functions
         let vm_fd = hyp.create_vm().map_err(Error::Vm)?;
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -222,8 +221,8 @@ impl GuestVm {
 
     /// Gets a reference to the file descriptor owned by this VM.
     ///
-    pub fn get_fd(&self) -> &Box<Vm> {
-        &self.fd
+    pub fn get_fd(&self) -> &Vm {
+        &(*self.fd)
     }
 }
 
@@ -231,7 +230,7 @@ impl GuestVm {
 pub struct GuestVcpu {
     #[cfg(target_arch = "x86_64")]
     cpuid: CpuId,
-    fd: Box<Vcpu + Send>,
+    fd: Box<Vcpu + Send + 'static>,
     id: u8,
     io_bus: devices::Bus,
     mmio_bus: devices::Bus,
@@ -302,16 +301,16 @@ impl GuestVcpu {
             .set_cpuid2(&self.cpuid)
             .map_err(Error::SetSupportedCpusFailed)?;
 
-        arch::x86_64::regs::setup_msrs(&self.fd).map_err(Error::MSRSConfiguration)?;
+        arch::x86_64::regs::setup_msrs(&(*self.fd)).map_err(Error::MSRSConfiguration)?;
         // Safe to unwrap because this method is called after the VM is configured
         let vm_memory = vm
             .get_memory()
             .ok_or(Error::GuestMemory(GuestMemoryError::MemoryNotInitialized))?;
-        arch::x86_64::regs::setup_regs(&self.fd, kernel_start_addr.offset() as u64)
+        arch::x86_64::regs::setup_regs(&(*self.fd), kernel_start_addr.offset() as u64)
             .map_err(Error::REGSConfiguration)?;
-        arch::x86_64::regs::setup_fpu(&self.fd).map_err(Error::FPUConfiguration)?;
-        arch::x86_64::regs::setup_sregs(vm_memory, &self.fd).map_err(Error::SREGSConfiguration)?;
-        arch::x86_64::interrupts::set_lint(&self.fd).map_err(Error::LocalIntConfiguration)?;
+        arch::x86_64::regs::setup_fpu(&(*self.fd)).map_err(Error::FPUConfiguration)?;
+        arch::x86_64::regs::setup_sregs(vm_memory, &(*self.fd)).map_err(Error::SREGSConfiguration)?;
+        arch::x86_64::interrupts::set_lint(&(*self.fd)).map_err(Error::LocalIntConfiguration)?;
         Ok(())
     }
 
@@ -471,11 +470,11 @@ mod tests {
     use sys_util::{register_signal_handler, Killable, SignalHandler};
 
     // Auxiliary function being used throughout the tests.
-    fn setup_vcpu() -> (Vm, Vcpu) {
-        let kvm = KvmContext::new().unwrap();
+    fn setup_vcpu() -> (GuestVm, GuestVcpu) {
+        let hyp = HypContext::new(0).unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let mut vm = Vm::new(kvm.fd()).expect("Cannot create new vm");
-        assert!(vm.memory_init(gm, &kvm).is_ok());
+        let mut vm = GuestVm::new(hyp.fd()).expect("Cannot create new vm");
+        assert!(vm.memory_init(gm, &hyp).is_ok());
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
@@ -487,7 +486,7 @@ mod tests {
                 .unwrap();
             vm.create_pit().unwrap();
         }
-        let vcpu = Vcpu::new(
+        let vcpu = GuestVcpu::new(
             1,
             &vm,
             devices::Bus::new(),
@@ -505,14 +504,14 @@ mod tests {
 
     #[test]
     fn test_create_vm() {
-        let kvm = KvmContext::new().unwrap();
-        let vm = Vm::new(kvm.fd()).expect("Cannot create new vm");
+        let hyp = HypContext::new(0).unwrap();
+        let vm = GuestVm::new(hyp.fd()).expect("Cannot create new vm");
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            let mut cpuid = kvm
-                .kvm
-                .get_supported_cpuid(MAX_KVM_CPUID_ENTRIES)
+            let mut cpuid = hyp 
+                .hyp
+                .get_supported_cpuid(MAX_CPUID_ENTRIES)
                 .expect("Cannot get supported cpuid");
             assert_eq!(
                 vm.get_supported_cpuid().mut_entries_slice(),
@@ -523,10 +522,10 @@ mod tests {
 
     #[test]
     fn test_vm_memory_init_success() {
-        let kvm = KvmContext::new().unwrap();
+        let hyp = HypContext::new(0).unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let mut vm = Vm::new(kvm.fd()).expect("Cannot create new vm");
-        assert!(vm.memory_init(gm, &kvm).is_ok());
+        let mut vm = GuestVm::new(hyp.fd()).expect("Cannot create new vm");
+        assert!(vm.memory_init(gm, &hyp).is_ok());
         let obj_addr = GuestAddress(0xf0);
         vm.get_memory()
             .unwrap()
@@ -542,32 +541,28 @@ mod tests {
 
     #[test]
     fn test_vm_memory_init_failure() {
-        let kvm_fd = Kvm::new().unwrap();
-        let mut vm = Vm::new(&kvm_fd).expect("new vm failed");
+        let hyp = HypContext::new(1).unwrap();
+        let mut vm = GuestVm::new(hyp.fd()).expect("new vm failed");
 
-        let kvm = KvmContext {
-            kvm: kvm_fd,
-            max_memslots: 1,
-        };
         let start_addr1 = GuestAddress(0x0);
         let start_addr2 = GuestAddress(0x1000);
         let gm = GuestMemory::new(&[(start_addr1, 0x1000), (start_addr2, 0x1000)]).unwrap();
 
-        assert!(vm.memory_init(gm, &kvm).is_err());
+        assert!(vm.memory_init(gm, &hyp).is_err());
     }
 
     #[cfg(target_arch = "x86_64")]
     #[test]
     fn test_setup_irqchip() {
-        let kvm = KvmContext::new().unwrap();
-        let vm = Vm::new(kvm.fd()).expect("Cannot create new vm");
+        let hyp = HypContext::new(0).unwrap();
+        let vm = GuestVm::new(hyp.fd()).expect("Cannot create new vm");
         let dummy_eventfd_1 = EventFd::new().unwrap();
         let dummy_eventfd_2 = EventFd::new().unwrap();
         let dummy_kbd_eventfd = EventFd::new().unwrap();
 
         vm.setup_irqchip(&dummy_eventfd_1, &dummy_eventfd_2, &dummy_kbd_eventfd)
             .expect("Cannot setup irqchip");
-        let _vcpu = Vcpu::new(
+        let _vcpu = GuestVcpu::new(
             1,
             &vm,
             devices::Bus::new(),
@@ -584,11 +579,11 @@ mod tests {
     #[cfg(target_arch = "aarch64")]
     #[test]
     fn test_setup_irqchip() {
-        let kvm = KvmContext::new().unwrap();
+        let hyp = HypContext::new(0).unwrap();
 
-        let mut vm = Vm::new(kvm.fd()).expect("Cannot create new vm");
+        let mut vm = GuestVm::new(hyp.fd()).expect("Cannot create new vm");
         let vcpu_count = 1;
-        let _vcpu = Vcpu::new(
+        let _vcpu = GuestVcpu::new(
             1,
             &vm,
             devices::Bus::new(),
@@ -604,11 +599,11 @@ mod tests {
 
     #[test]
     fn test_setup_irqchip_failure() {
-        let kvm = KvmContext::new().unwrap();
+        let hyp = HypContext::new(0).unwrap();
         // On aarch64, this needs to be mutable.
         #[allow(unused_mut)]
-        let mut vm = Vm::new(kvm.fd()).expect("Cannot create new vm");
-        let _vcpu = Vcpu::new(
+        let mut vm = GuestVm::new(hyp.fd()).expect("Cannot create new vm");
+        let _vcpu = GuestVcpu::new(
             1,
             &vm,
             devices::Bus::new(),
@@ -637,8 +632,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_create_pit() {
-        let kvm = KvmContext::new().unwrap();
-        let vm = Vm::new(kvm.fd()).expect("Cannot create new vm");
+        let hyp = HypContext::new(0).unwrap();
+        let vm = GuestVm::new(hyp.fd()).expect("Cannot create new vm");
 
         assert!(vm.create_pit().is_ok());
         // Trying to setup two PITs will result in EEXIST error.
@@ -667,13 +662,13 @@ mod tests {
     #[cfg(target_arch = "aarch64")]
     #[test]
     fn test_configure_vcpu() {
-        let kvm = KvmContext::new().unwrap();
+        let hyp = HypContext::new(0).unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let mut vm = Vm::new(kvm.fd()).expect("new vm failed");
-        assert!(vm.memory_init(gm, &kvm).is_ok());
+        let mut vm = GuestVm::new(hyp.fd()).expect("new vm failed");
+        assert!(vm.memory_init(gm, &hyp).is_ok());
 
         // Try it for when vcpu id is 0.
-        let mut vcpu = Vcpu::new(
+        let mut vcpu = GuestVcpu::new(
             0,
             &vm,
             devices::Bus::new(),
@@ -686,7 +681,7 @@ mod tests {
         assert!(vcpu.configure(&vm_config, GuestAddress(0), &vm).is_ok());
 
         // Try it for when vcpu id is NOT 0.
-        let mut vcpu = Vcpu::new(
+        let mut vcpu = GuestVcpu::new(
             1,
             &vm,
             devices::Bus::new(),
@@ -750,17 +745,13 @@ mod tests {
 
     #[test]
     fn not_enough_mem_slots() {
-        let kvm_fd = Kvm::new().unwrap();
-        let mut vm = Vm::new(&kvm_fd).expect("new vm failed");
+        let hyp = HypContext::new(1).unwrap();
+        let mut vm = GuestVm::new(hyp.fd()).expect("new vm failed");
 
-        let kvm = KvmContext {
-            kvm: kvm_fd,
-            max_memslots: 1,
-        };
         let start_addr1 = GuestAddress(0x0);
         let start_addr2 = GuestAddress(0x1000);
         let gm = GuestMemory::new(&[(start_addr1, 0x1000), (start_addr2, 0x1000)]).unwrap();
 
-        assert!(vm.memory_init(gm, &kvm).is_err());
+        assert!(vm.memory_init(gm, &hyp).is_err());
     }
 }
