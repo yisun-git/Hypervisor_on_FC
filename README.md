@@ -1,3 +1,9 @@
+## What is Hypervisor and where it is from?
+
+Hypervisor is an abstraction crate for rust-vmm. It is from: https://github.com/rust-vmm/community/issues/50
+
+Below is the original README of Firecracker.
+
 ![Firecracker Logo Title](docs/images/fc_logo_full_white-bg.png)
 
 Our mission is to enable secure, multi-tenant, minimal-overhead execution of
